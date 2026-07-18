@@ -26,8 +26,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -337,6 +340,101 @@ fun BossBanner(remaining: Int, total: Int, modifier: Modifier = Modifier) {
             fontWeight = FontWeight.Black,
             fontSize = 16.sp,
         )
+    }
+}
+
+/** Blitz HUD: lives, a countdown, live score, and the combo meter. */
+@Composable
+fun BlitzHud(
+    streak: Int,
+    hearts: Int,
+    maxHearts: Int,
+    secondsLeft: Int,
+    score: Int,
+    modifier: Modifier = Modifier,
+) {
+    val theme = LocalGameTheme.current
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(theme.shapes.controlCorner))
+            .background(theme.colors.surfaceAlt)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f)) {
+                repeat(maxHearts) { i ->
+                    Icon(
+                        if (i < hearts) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = null,
+                        tint = theme.colors.hearts,
+                        modifier = Modifier.size(20.dp).padding(end = 2.dp),
+                    )
+                }
+            }
+            Icon(
+                Icons.Filled.Timer,
+                contentDescription = null,
+                tint = if (secondsLeft <= 10) theme.colors.hearts else theme.colors.textSecondary,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(3.dp))
+            Text(
+                "${secondsLeft}s",
+                color = if (secondsLeft <= 10) theme.colors.hearts else theme.colors.textPrimary,
+                fontFamily = theme.type.hud,
+                fontWeight = FontWeight.Black,
+                fontSize = 15.sp,
+            )
+            Spacer(Modifier.width(14.dp))
+            Text(
+                "$score",
+                color = theme.colors.accent,
+                fontFamily = theme.type.hud,
+                fontWeight = FontWeight.Black,
+                fontSize = 17.sp,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        ComboMeter(streak)
+    }
+}
+
+/** End-of-run Blitz summary. */
+@Composable
+fun BlitzOverCard(score: Int, onExit: () -> Unit, modifier: Modifier = Modifier) {
+    val theme = LocalGameTheme.current
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(theme.shapes.cardCorner))
+            .background(theme.colors.surface)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "BLITZ OVER",
+            color = theme.colors.accent,
+            fontFamily = theme.type.display,
+            fontWeight = FontWeight.Black,
+            fontSize = 28.sp,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Score",
+            color = theme.colors.textSecondary,
+            fontFamily = theme.type.hud,
+            fontSize = 13.sp,
+        )
+        Text(
+            "$score",
+            color = theme.colors.textPrimary,
+            fontFamily = theme.type.display,
+            fontWeight = FontWeight.Black,
+            fontSize = 40.sp,
+        )
+        Spacer(Modifier.height(16.dp))
+        GameButton("Back to map", onClick = onExit)
     }
 }
 

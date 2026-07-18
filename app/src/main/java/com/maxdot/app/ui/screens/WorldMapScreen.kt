@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
@@ -62,6 +63,7 @@ fun WorldMapScreen(
     book: Book,
     mainViewModel: MainViewModel,
     onPlay: (boss: Boolean) -> Unit,
+    onBlitz: () -> Unit,
     onBack: () -> Unit,
 ) {
     val theme = LocalGameTheme.current
@@ -92,6 +94,24 @@ fun WorldMapScreen(
                         color = theme.colors.textSecondary,
                         fontFamily = theme.type.hud,
                         fontSize = 12.sp,
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(theme.colors.accent)
+                        .clickable { onBlitz() }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Bolt, contentDescription = null, tint = theme.colors.textPrimary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "Blitz",
+                        color = theme.colors.textPrimary,
+                        fontFamily = theme.type.hud,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 14.sp,
                     )
                 }
             }

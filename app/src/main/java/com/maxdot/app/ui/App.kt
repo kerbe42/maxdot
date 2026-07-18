@@ -30,7 +30,7 @@ import com.maxdot.app.ui.theme.MaxDotTheme
 sealed class Screen {
     data object Library : Screen()
     data class WorldMap(val book: Book) : Screen()
-    data class Game(val book: Book, val boss: Boolean = false) : Screen()
+    data class Game(val book: Book, val boss: Boolean = false, val blitz: Boolean = false) : Screen()
     data object Rewards : Screen()
     data object Settings : Screen()
 }
@@ -66,7 +66,11 @@ fun App(mainViewModel: MainViewModel) {
                         mainViewModel = mainViewModel,
                         onPlay = { boss ->
                             gameSessionKey++
-                            screen = Screen.Game(current.book, boss)
+                            screen = Screen.Game(current.book, boss = boss)
+                        },
+                        onBlitz = {
+                            gameSessionKey++
+                            screen = Screen.Game(current.book, blitz = true)
                         },
                         onBack = { screen = Screen.Library },
                     )
@@ -83,6 +87,7 @@ fun App(mainViewModel: MainViewModel) {
                                     bookRepo = mainViewModel.books,
                                     profileRepo = mainViewModel.profiles,
                                     boss = current.boss,
+                                    blitz = current.blitz,
                                 )
                             }
                         },

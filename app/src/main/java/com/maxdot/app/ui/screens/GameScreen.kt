@@ -62,6 +62,8 @@ import com.maxdot.app.data.Book
 import com.maxdot.core.model.Challenge
 import com.maxdot.core.model.ChallengeType
 import com.maxdot.core.model.GameMode
+import com.maxdot.app.ui.components.BlitzHud
+import com.maxdot.app.ui.components.BlitzOverCard
 import com.maxdot.app.ui.components.BossBanner
 import com.maxdot.app.ui.components.FloatingXp
 import com.maxdot.app.ui.components.GameHud
@@ -106,6 +108,15 @@ fun GameScreen(
         }
     }
 
+    // In Blitz, finishing a passage auto-advances to keep the run flowing.
+    LaunchedEffect(state.passageComplete, state.blitz?.over) {
+        val b = state.blitz
+        if (b != null && !b.over && state.passageComplete) {
+            kotlinx.coroutines.delay(650)
+            viewModel.nextPassage()
+        }
+    }
+
     Scaffold(
         containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -133,11 +144,22 @@ fun GameScreen(
                 HowToPlayButton(advanced = state.mode == GameMode.ADVANCED)
             }
 
-            GameHud(
-                streak = profile.currentStreak,
-                hints = profile.hints,
-                bookPercent = state.progress.percent,
-            )
+            val blitz = state.blitz
+            if (blitz != null) {
+                BlitzHud(
+                    streak = profile.currentStreak,
+                    hearts = blitz.hearts,
+                    maxHearts = blitz.maxHearts,
+                    secondsLeft = blitz.secondsLeft,
+                    score = blitz.score,
+                )
+            } else {
+                GameHud(
+                    streak = profile.currentStreak,
+                    hints = profile.hints,
+                    bookPercent = state.progress.percent,
+                )
+            }
 
             if (state.isBoss) {
                 Spacer(Modifier.height(8.dp))
@@ -172,6 +194,15 @@ fun GameScreen(
                             Spacer(Modifier.height(12.dp))
                             Button(onClick = onExit) { Text("Back to library") }
                         }
+                    }
+                }
+
+                state.blitz?.over == true -> {
+                    Box(
+                        Modifier.fillMaxWidth().padding(top = 40.dp),
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        BlitzOverCard(score = state.blitz!!.score, onExit = onExit)
                     }
                 }
 
@@ -252,7 +283,7 @@ fun GameScreen(
                             onTapChallenge = { id -> viewModel.openChallenge(id) },
                         )
                         Spacer(Modifier.height(12.dp))
-                        if (state.passageComplete) {
+                        if (state.passageComplete && state.blitz == null) {
                             PassageSummaryCard(
                                 correct = state.passage?.challenges?.count {
                                     state.answers[it.id]?.correct == true
@@ -263,7 +294,7 @@ fun GameScreen(
                                 isBoss = state.isBoss,
                                 onNext = { viewModel.nextPassage() },
                             )
-                        } else {
+                        } else if (!state.passageComplete) {
                             Text(
                                 "Tap the highlighted words and [?] marks to fix the text.",
                                 style = MaterialTheme.typography.bodySmall,
