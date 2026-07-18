@@ -61,7 +61,7 @@ import com.maxdot.core.game.WorldMap
 fun WorldMapScreen(
     book: Book,
     mainViewModel: MainViewModel,
-    onPlay: () -> Unit,
+    onPlay: (boss: Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     val theme = LocalGameTheme.current
@@ -105,7 +105,11 @@ fun WorldMapScreen(
                     WorldMapRow(
                         node = node,
                         nudgeRight = i % 2 == 0,
-                        onClick = if (node.state == NodeState.CURRENT) onPlay else null,
+                        onClick = if (node.state == NodeState.CURRENT) {
+                            { onPlay(node.kind == NodeKind.BOSS) }
+                        } else {
+                            null
+                        },
                     )
                 }
                 item { Spacer(Modifier.height(80.dp)) }

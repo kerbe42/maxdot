@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -292,6 +293,50 @@ fun LevelUpOverlay(level: Int, onDismiss: () -> Unit) {
                 fontSize = 15.sp,
             )
         }
+    }
+}
+
+/** Boss-fight banner with a depleting health bar (remaining hits to land). */
+@Composable
+fun BossBanner(remaining: Int, total: Int, modifier: Modifier = Modifier) {
+    val theme = LocalGameTheme.current
+    val frac = if (total <= 0) 0f else (remaining.toFloat() / total).coerceIn(0f, 1f)
+    val animFrac by animateFloatAsState(frac, tween(400), label = "bossHp")
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(theme.shapes.controlCorner))
+            .background(theme.colors.surfaceAlt)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Whatshot, contentDescription = null, tint = theme.colors.hearts, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "BOSS FIGHT",
+                color = theme.colors.hearts,
+                fontFamily = theme.type.hud,
+                fontWeight = FontWeight.Black,
+                fontSize = 13.sp,
+            )
+            Spacer(Modifier.height(4.dp))
+            Box(
+                Modifier.fillMaxWidth().height(9.dp).clip(RoundedCornerShape(4.dp)).background(theme.colors.surface),
+            ) {
+                Box(
+                    Modifier.fillMaxWidth(animFrac).height(9.dp).clip(RoundedCornerShape(4.dp)).background(theme.colors.hearts),
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "$remaining",
+            color = theme.colors.hearts,
+            fontFamily = theme.type.hud,
+            fontWeight = FontWeight.Black,
+            fontSize = 16.sp,
+        )
     }
 }
 

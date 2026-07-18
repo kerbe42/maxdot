@@ -62,6 +62,7 @@ import com.maxdot.app.data.Book
 import com.maxdot.core.model.Challenge
 import com.maxdot.core.model.ChallengeType
 import com.maxdot.core.model.GameMode
+import com.maxdot.app.ui.components.BossBanner
 import com.maxdot.app.ui.components.FloatingXp
 import com.maxdot.app.ui.components.GameHud
 import com.maxdot.app.ui.components.LevelUpOverlay
@@ -137,6 +138,15 @@ fun GameScreen(
                 hints = profile.hints,
                 bookPercent = state.progress.percent,
             )
+
+            if (state.isBoss) {
+                Spacer(Modifier.height(8.dp))
+                val bossTotal = state.passage?.challenges?.size
+                    ?: state.proof?.passage?.mistakeTotal ?: 0
+                val bossHits = state.passage?.challenges?.count { state.answers[it.id]?.correct == true }
+                    ?: state.proof?.result?.caught ?: 0
+                BossBanner(remaining = (bossTotal - bossHits).coerceAtLeast(0), total = bossTotal)
+            }
 
             Spacer(Modifier.height(12.dp))
 
@@ -250,6 +260,7 @@ fun GameScreen(
                                 total = state.passage?.challenges?.size ?: 0,
                                 xp = state.passageXp,
                                 perfect = state.passagePerfect,
+                                isBoss = state.isBoss,
                                 onNext = { viewModel.nextPassage() },
                             )
                         } else {
@@ -526,6 +537,7 @@ private fun PassageSummaryCard(
     total: Int,
     xp: Int,
     perfect: Boolean,
+    isBoss: Boolean,
     onNext: () -> Unit,
 ) {
     Card(
@@ -536,14 +548,19 @@ private fun PassageSummaryCard(
     ) {
         Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                if (perfect) "Perfect passage! 🌟" else "Passage complete",
+                when {
+                    isBoss && perfect -> "Boss defeated! ⚔️"
+                    isBoss -> "Boss survived — regroup!"
+                    perfect -> "Perfect passage! 🌟"
+                    else -> "Passage complete"
+                },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(6.dp))
             Text("$correct of $total correct  ·  +$xp XP" + if (perfect) " (incl. bonus)" else "")
             Spacer(Modifier.height(12.dp))
-            Button(onClick = onNext) { Text("Next passage →") }
+            Button(onClick = onNext) { Text(if (isBoss) "Continue →" else "Next passage →") }
         }
     }
 }

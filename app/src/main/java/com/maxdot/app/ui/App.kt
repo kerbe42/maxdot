@@ -30,7 +30,7 @@ import com.maxdot.app.ui.theme.MaxDotTheme
 sealed class Screen {
     data object Library : Screen()
     data class WorldMap(val book: Book) : Screen()
-    data class Game(val book: Book) : Screen()
+    data class Game(val book: Book, val boss: Boolean = false) : Screen()
     data object Rewards : Screen()
     data object Settings : Screen()
 }
@@ -64,16 +64,16 @@ fun App(mainViewModel: MainViewModel) {
                     WorldMapScreen(
                         book = current.book,
                         mainViewModel = mainViewModel,
-                        onPlay = {
+                        onPlay = { boss ->
                             gameSessionKey++
-                            screen = Screen.Game(current.book)
+                            screen = Screen.Game(current.book, boss)
                         },
                         onBack = { screen = Screen.Library },
                     )
                 }
 
                 is Screen.Game -> {
-                    BackHandler { screen = Screen.Library }
+                    BackHandler { screen = Screen.WorldMap(current.book) }
                     val gameViewModel: GameViewModel = viewModel(
                         key = "game_${current.book.id}_$gameSessionKey",
                         factory = viewModelFactory {
@@ -82,6 +82,7 @@ fun App(mainViewModel: MainViewModel) {
                                     book = current.book,
                                     bookRepo = mainViewModel.books,
                                     profileRepo = mainViewModel.profiles,
+                                    boss = current.boss,
                                 )
                             }
                         },
@@ -90,7 +91,7 @@ fun App(mainViewModel: MainViewModel) {
                         book = current.book,
                         viewModel = gameViewModel,
                         mainViewModel = mainViewModel,
-                        onExit = { screen = Screen.Library },
+                        onExit = { screen = Screen.WorldMap(current.book) },
                     )
                 }
 

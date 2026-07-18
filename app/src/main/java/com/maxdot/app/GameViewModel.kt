@@ -62,6 +62,7 @@ data class GameUiState(
     val passageXp: Int = 0,
     val passagePerfect: Boolean = false,
     val bookFinished: Boolean = false,
+    val isBoss: Boolean = false,
     val progress: BookProgress = BookProgress(),
 ) {
     val allAnswered: Boolean
@@ -81,6 +82,8 @@ class GameViewModel(
     private val book: Book,
     private val bookRepo: BookRepository,
     private val profileRepo: ProfileRepository,
+    /** When true this is a boss node: harder passage sizing and boss framing. */
+    private val boss: Boolean = false,
 ) : ViewModel() {
 
     private val generator = ChallengeGenerator()
@@ -96,7 +99,7 @@ class GameViewModel(
     private var progress = BookProgress()
 
     private val difficulty: Difficulty
-        get() = profileRepo.settings.value.difficulty
+        get() = if (boss) Difficulty.HARD else profileRepo.settings.value.difficulty
 
     private val gameMode: GameMode
         get() = profileRepo.settings.value.gameMode
@@ -148,6 +151,7 @@ class GameViewModel(
             loading = false,
             mode = GameMode.GUIDED,
             passage = passage,
+            isBoss = boss,
             progress = progress,
             sessionCorrect = _state.value.sessionCorrect,
             sessionAnswered = _state.value.sessionAnswered,
@@ -177,6 +181,7 @@ class GameViewModel(
             loading = false,
             mode = GameMode.ADVANCED,
             proof = ProofUiState(passage = passage),
+            isBoss = boss,
             progress = progress,
             sessionCorrect = _state.value.sessionCorrect,
             sessionAnswered = _state.value.sessionAnswered,
