@@ -140,8 +140,6 @@ class ProfileRepository(context: Context) {
         return true
     }
 
-    fun selectBackground(id: String) = update(_profile.value.copy(selectedBackground = id))
-
     fun resetProgress() {
         prefs.edit().clear().apply()
         _profile.value = ProfileState()
