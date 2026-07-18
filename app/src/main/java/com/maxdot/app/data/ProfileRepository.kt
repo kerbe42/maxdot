@@ -21,6 +21,7 @@ enum class AppFont(val label: String) {
 
 data class SettingsState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val selectedTheme: com.maxdot.app.ui.theme.GameThemeId = com.maxdot.app.ui.theme.GameThemeId.PLAYFUL,
     val fontScale: Float = 1.0f,
     val font: AppFont = AppFont.SERIF,
     val difficulty: com.maxdot.core.model.Difficulty = com.maxdot.core.model.Difficulty.MEDIUM,
@@ -178,6 +179,7 @@ class ProfileRepository(context: Context) {
     // --- Settings -----------------------------------------------------------
 
     fun setThemeMode(mode: ThemeMode) = updateSettings { it.copy(themeMode = mode) }
+    fun setTheme(id: com.maxdot.app.ui.theme.GameThemeId) = updateSettings { it.copy(selectedTheme = id) }
     fun setFontScale(scale: Float) = updateSettings { it.copy(fontScale = scale.coerceIn(0.8f, 1.6f)) }
     fun setFont(font: AppFont) = updateSettings { it.copy(font = font) }
     fun setDifficulty(d: com.maxdot.core.model.Difficulty) = updateSettings { it.copy(difficulty = d) }
@@ -233,6 +235,7 @@ class ProfileRepository(context: Context) {
     private fun saveSettings(s: SettingsState) {
         prefs.edit()
             .putString("themeMode", s.themeMode.name)
+            .putString("selectedTheme", s.selectedTheme.name)
             .putFloat("fontScale", s.fontScale)
             .putString("font", s.font.name)
             .putString("difficulty", s.difficulty.name)
@@ -244,6 +247,7 @@ class ProfileRepository(context: Context) {
 
     private fun loadSettings() = SettingsState(
         themeMode = enumOrDefault(prefs.getString("themeMode", null), ThemeMode.SYSTEM),
+        selectedTheme = enumOrDefault(prefs.getString("selectedTheme", null), com.maxdot.app.ui.theme.GameThemeId.PLAYFUL),
         fontScale = prefs.getFloat("fontScale", 1.0f),
         font = enumOrDefault(prefs.getString("font", null), AppFont.SERIF),
         difficulty = enumOrDefault(prefs.getString("difficulty", null), com.maxdot.core.model.Difficulty.MEDIUM),
