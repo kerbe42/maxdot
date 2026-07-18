@@ -4,13 +4,18 @@ import com.maxdot.core.game.Achievements
 import com.maxdot.core.game.ChallengeGenerator
 import com.maxdot.core.game.Leveling
 import com.maxdot.core.game.PassageBuilder
+import com.maxdot.core.game.ProofGrader
 import com.maxdot.core.game.StatsSnapshot
 import com.maxdot.core.model.Challenge
 import com.maxdot.core.model.ChallengeType
 import com.maxdot.core.model.Difficulty
+import com.maxdot.core.model.ProofPassage
+import com.maxdot.core.model.ProofToken
+import com.maxdot.core.model.TokenOutcome
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ChallengeGeneratorTest {
@@ -91,6 +96,143 @@ class ChallengeGeneratorTest {
             }
         }
         assertTrue(sawGrammar, "expected grammar/apostrophe challenges on medium difficulty")
+    }
+}
+
+class AdvancedModeTest {
+
+    private val sentences = listOf(
+        "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.",
+        "However little known the feelings or views of such a man may be, the neighbourhood considers him their rightful property.",
+        "Mr. Bennet replied that he had not, and that was an end of it.",
+        "But it's a fine thing for our girls, and I don't intend to stop there.",
+    )
+
+    private fun reassemble(passage: ProofPassage): String =
+        passage.tokens.joinToString("") { (if (it.leadingSpace) " " else "") + it.correctText }
+
+    @Test
+    fun `advanced passage plants mistakes within difficulty bounds`() {
+        for (difficulty in Difficulty.entries) {
+            repeat(20) { seed ->
+                val passage = ChallengeGenerator(Random(seed.toLong()))
+                    .generateAdvanced(sentences, difficulty)
+                assertTrue(passage.mistakeTotal > 0, "no mistakes for $difficulty seed $seed")
+                assertTrue(passage.mistakeTotal <= difficulty.maxChallenges)
+            }
+        }
+    }
+
+    @Test
+    fun `correctText of every token reproduces the original source`() {
+        val original = sentences.joinToString(" ")
+        repeat(30) { seed ->
+            for (difficulty in Difficulty.entries) {
+                val passage = ChallengeGenerator(Random(seed.toLong()))
+                    .generateAdvanced(sentences, difficulty)
+                assertEquals(original, reassemble(passage), "seed $seed $difficulty")
+            }
+        }
+    }
+
+    @Test
+    fun `mistake tokens are corrupted and clean tokens are untouched`() {
+        repeat(30) { seed ->
+            val passage = ChallengeGenerator(Random(seed.toLong()))
+                .generateAdvanced(sentences, Difficulty.HARD)
+            for (token in passage.tokens) {
+                if (token.isMistake) {
+                    assertTrue(token.shownText != token.correctText, "mistake not corrupted")
+                    assertTrue(token.explanation != null, "mistake missing explanation")
+                } else {
+                    assertEquals(token.correctText, token.shownText, "clean token altered")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `mistake counts match the planted tokens`() {
+        repeat(30) { seed ->
+            val passage = ChallengeGenerator(Random(seed.toLong()))
+                .generateAdvanced(sentences, Difficulty.HARD)
+            val expected = passage.tokens.filter { it.isMistake }
+                .groupingBy { it.mistakeType!! }.eachCount()
+            assertEquals(expected, passage.mistakeCounts)
+            assertEquals(passage.mistakeTotal, passage.mistakeCounts.values.sum())
+        }
+    }
+
+    @Test
+    fun `fixing every mistake grades as a perfect catch`() {
+        val passage = ChallengeGenerator(Random(1)).generateAdvanced(sentences, Difficulty.HARD)
+        val edits = passage.tokens.filter { it.isMistake }
+            .associate { it.index to it.correctText }
+        val result = ProofGrader.grade(passage, edits)
+        assertEquals(passage.mistakeTotal, result.caught)
+        assertEquals(0, result.missed)
+        assertEquals(0, result.falseFlags)
+        assertTrue(result.perfect)
+    }
+
+    @Test
+    fun `leaving the passage untouched misses every mistake`() {
+        val passage = ChallengeGenerator(Random(2)).generateAdvanced(sentences, Difficulty.HARD)
+        val result = ProofGrader.grade(passage, emptyMap())
+        assertEquals(0, result.caught)
+        assertEquals(passage.mistakeTotal, result.missed)
+        assertEquals(0, result.falseFlags)
+        assertFalse(result.perfect)
+    }
+
+    @Test
+    fun `changing a correct word is a false flag that blocks perfect`() {
+        val passage = ChallengeGenerator(Random(3)).generateAdvanced(sentences, Difficulty.HARD)
+        val cleanToken = passage.tokens.first { !it.isMistake }
+        val edits = passage.tokens.filter { it.isMistake }
+            .associate { it.index to it.correctText } +
+            (cleanToken.index to cleanToken.shownText + "zzz")
+        val result = ProofGrader.grade(passage, edits)
+        assertEquals(passage.mistakeTotal, result.caught)
+        assertEquals(1, result.falseFlags)
+        assertEquals(TokenOutcome.FALSE_FLAG, result.outcomes[cleanToken.index])
+        assertFalse(result.perfect)
+    }
+
+    @Test
+    fun `wrong fix on a mistake counts as missed, editing back to correct does not false-flag`() {
+        val passage = ChallengeGenerator(Random(4)).generateAdvanced(sentences, Difficulty.HARD)
+        val mistake = passage.tokens.first { it.isMistake }
+        val clean = passage.tokens.first { !it.isMistake }
+        val result = ProofGrader.grade(
+            passage,
+            mapOf(
+                mistake.index to "definitely-wrong",
+                // editing a clean token but landing on its correct value must not penalize
+                clean.index to clean.correctText,
+            ),
+        )
+        assertEquals(TokenOutcome.MISSED, result.outcomes[mistake.index])
+        assertEquals(TokenOutcome.UNTOUCHED_CORRECT, result.outcomes[clean.index])
+        assertEquals(0, result.falseFlags)
+    }
+
+    @Test
+    fun `comparison is whitespace lenient and case sensitive`() {
+        val passage = ProofPassage(
+            tokens = listOf(
+                ProofToken(0, false, "said", "said,", ChallengeType.PUNCTUATION, "comma"),
+                ProofToken(1, true, "the", "The", ChallengeType.CAPITALIZATION, "capital"),
+            ),
+            mistakeCounts = mapOf(
+                ChallengeType.PUNCTUATION to 1,
+                ChallengeType.CAPITALIZATION to 1,
+            ),
+        )
+        // extra space before the comma is tolerated; wrong case is not accepted
+        val result = ProofGrader.grade(passage, mapOf(0 to "said ,", 1 to "the"))
+        assertEquals(TokenOutcome.CAUGHT, result.outcomes[0])
+        assertEquals(TokenOutcome.MISSED, result.outcomes[1])
     }
 }
 

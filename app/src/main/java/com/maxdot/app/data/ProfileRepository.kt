@@ -24,6 +24,7 @@ data class SettingsState(
     val fontScale: Float = 1.0f,
     val font: AppFont = AppFont.SERIF,
     val difficulty: com.maxdot.core.model.Difficulty = com.maxdot.core.model.Difficulty.MEDIUM,
+    val gameMode: com.maxdot.core.model.GameMode = com.maxdot.core.model.GameMode.GUIDED,
     val hapticsEnabled: Boolean = true,
     val dailyGoalXp: Int = 100,
 )
@@ -180,6 +181,7 @@ class ProfileRepository(context: Context) {
     fun setFontScale(scale: Float) = updateSettings { it.copy(fontScale = scale.coerceIn(0.8f, 1.6f)) }
     fun setFont(font: AppFont) = updateSettings { it.copy(font = font) }
     fun setDifficulty(d: com.maxdot.core.model.Difficulty) = updateSettings { it.copy(difficulty = d) }
+    fun setGameMode(mode: com.maxdot.core.model.GameMode) = updateSettings { it.copy(gameMode = mode) }
     fun setHaptics(enabled: Boolean) = updateSettings { it.copy(hapticsEnabled = enabled) }
     fun setDailyGoal(xp: Int) = updateSettings { it.copy(dailyGoalXp = xp) }
 
@@ -234,6 +236,7 @@ class ProfileRepository(context: Context) {
             .putFloat("fontScale", s.fontScale)
             .putString("font", s.font.name)
             .putString("difficulty", s.difficulty.name)
+            .putString("gameMode", s.gameMode.name)
             .putBoolean("haptics", s.hapticsEnabled)
             .putInt("dailyGoalXp", s.dailyGoalXp)
             .apply()
@@ -244,6 +247,7 @@ class ProfileRepository(context: Context) {
         fontScale = prefs.getFloat("fontScale", 1.0f),
         font = enumOrDefault(prefs.getString("font", null), AppFont.SERIF),
         difficulty = enumOrDefault(prefs.getString("difficulty", null), com.maxdot.core.model.Difficulty.MEDIUM),
+        gameMode = enumOrDefault(prefs.getString("gameMode", null), com.maxdot.core.model.GameMode.GUIDED),
         hapticsEnabled = prefs.getBoolean("haptics", true),
         dailyGoalXp = prefs.getInt("dailyGoalXp", 100),
     )

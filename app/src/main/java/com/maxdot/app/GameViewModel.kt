@@ -9,9 +9,14 @@ import com.maxdot.app.data.ProfileRepository
 import com.maxdot.core.game.AchievementDef
 import com.maxdot.core.game.ChallengeGenerator
 import com.maxdot.core.game.PassageBuilder
+import com.maxdot.core.game.ProofGrader
 import com.maxdot.core.model.Challenge
 import com.maxdot.core.model.Difficulty
+import com.maxdot.core.model.GameMode
 import com.maxdot.core.model.Passage
+import com.maxdot.core.model.ProofPassage
+import com.maxdot.core.model.ProofResult
+import com.maxdot.core.model.TokenOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,15 +29,33 @@ data class AnswerState(
     val correct: Boolean,
 )
 
+/** Advanced-mode play state for the current passage. */
+data class ProofUiState(
+    val passage: ProofPassage,
+    /** Player edits keyed by token index; absent means the token is unchanged. */
+    val edits: Map<Int, String> = emptyMap(),
+    /** Token whose editor dialog is open, if any. */
+    val openTokenIndex: Int? = null,
+    /** Grading result once the passage is checked; null while still editable. */
+    val result: ProofResult? = null,
+    /** Mistake token indices whose location a hint has revealed. */
+    val revealedHints: Set<Int> = emptySet(),
+) {
+    val checked: Boolean get() = result != null
+}
+
 data class GameUiState(
     val loading: Boolean = true,
     val error: String? = null,
+    val mode: GameMode = GameMode.GUIDED,
     val passage: Passage? = null,
     val answers: Map<Int, AnswerState> = emptyMap(),
     /** Challenge currently opened in the answer dialog. */
     val openChallenge: Challenge? = null,
     /** Option indices removed by a hint for the open challenge. */
     val eliminatedOptions: Set<Int> = emptySet(),
+    /** Advanced-mode state; non-null only when [mode] is ADVANCED. */
+    val proof: ProofUiState? = null,
     val sessionCorrect: Int = 0,
     val sessionAnswered: Int = 0,
     val passageComplete: Boolean = false,
@@ -73,6 +96,9 @@ class GameViewModel(
     private val difficulty: Difficulty
         get() = profileRepo.settings.value.difficulty
 
+    private val gameMode: GameMode
+        get() = profileRepo.settings.value.gameMode
+
     init {
         viewModelScope.launch {
             try {
@@ -93,6 +119,10 @@ class GameViewModel(
     }
 
     fun nextPassage() {
+        if (gameMode == GameMode.ADVANCED) nextProofPassage() else nextGuidedPassage()
+    }
+
+    private fun nextGuidedPassage() {
         val (chunk, nextPos) = PassageBuilder.next(sentences, position, difficulty)
         if (chunk.isEmpty()) {
             finishBook()
@@ -114,7 +144,37 @@ class GameViewModel(
         position = advanceTo
         _state.value = GameUiState(
             loading = false,
+            mode = GameMode.GUIDED,
             passage = passage,
+            progress = progress,
+            sessionCorrect = _state.value.sessionCorrect,
+            sessionAnswered = _state.value.sessionAnswered,
+        )
+    }
+
+    private fun nextProofPassage() {
+        val (chunk, nextPos) = PassageBuilder.next(sentences, position, difficulty)
+        if (chunk.isEmpty()) {
+            finishBook()
+            return
+        }
+        var passage = generator.generateAdvanced(chunk, difficulty)
+        var advanceTo = nextPos
+        while (passage.mistakeTotal == 0 && advanceTo < sentences.size) {
+            val (moreChunk, morePos) = PassageBuilder.next(sentences, advanceTo, difficulty)
+            if (moreChunk.isEmpty()) break
+            passage = generator.generateAdvanced(moreChunk, difficulty)
+            advanceTo = morePos
+        }
+        if (passage.mistakeTotal == 0) {
+            finishBook()
+            return
+        }
+        position = advanceTo
+        _state.value = GameUiState(
+            loading = false,
+            mode = GameMode.ADVANCED,
+            proof = ProofUiState(passage = passage),
             progress = progress,
             sessionCorrect = _state.value.sessionCorrect,
             sessionAnswered = _state.value.sessionAnswered,
@@ -190,6 +250,92 @@ class GameViewModel(
             )
         }
         _state.value = newState
+    }
+
+    // --- Advanced (proofreading) mode --------------------------------------
+
+    fun openToken(index: Int) {
+        val proof = _state.value.proof ?: return
+        if (proof.checked) return
+        _state.value = _state.value.copy(proof = proof.copy(openTokenIndex = index))
+    }
+
+    fun dismissToken() {
+        val proof = _state.value.proof ?: return
+        _state.value = _state.value.copy(proof = proof.copy(openTokenIndex = null))
+    }
+
+    /** Records the player's edit of a token, closing the editor. */
+    fun editToken(index: Int, text: String) {
+        val proof = _state.value.proof ?: return
+        if (proof.checked) return
+        val token = proof.passage.tokens.getOrNull(index) ?: return
+        val trimmed = text.trim()
+        // Reverting to the shown text (or clearing it) means "no change".
+        val edits = if (trimmed.isEmpty() || trimmed == token.shownText) {
+            proof.edits - index
+        } else {
+            proof.edits + (index to trimmed)
+        }
+        _state.value = _state.value.copy(
+            proof = proof.copy(edits = edits, openTokenIndex = null),
+        )
+    }
+
+    /** Reveals the location of one still-uncaught mistake, spending a hint. */
+    fun useProofHint() {
+        val proof = _state.value.proof ?: return
+        if (proof.checked) return
+        val preview = ProofGrader.grade(proof.passage, proof.edits)
+        val target = proof.passage.tokens.firstOrNull {
+            it.isMistake && it.index !in proof.revealedHints &&
+                preview.outcomes[it.index] == TokenOutcome.MISSED
+        } ?: return
+        if (!profileRepo.consumeHint()) return
+        _state.value = _state.value.copy(
+            proof = proof.copy(revealedHints = proof.revealedHints + target.index),
+        )
+    }
+
+    /** Grades the current Advanced passage and commits XP/progress. */
+    fun checkPassage() {
+        val st = _state.value
+        val proof = st.proof ?: return
+        if (proof.checked) return
+
+        val result = ProofGrader.grade(proof.passage, proof.edits)
+
+        // One recorded answer per planted mistake (caught => correct), so streaks,
+        // levels, and achievements advance exactly as in guided mode.
+        var xp = 0
+        for (token in proof.passage.tokens) {
+            if (!token.isMistake) continue
+            val caught = result.outcomes[token.index] == TokenOutcome.CAUGHT
+            val events = profileRepo.recordAnswer(caught)
+            xp += events.xpGained
+            celebrateEvents(events)
+        }
+        val completion = profileRepo.recordPassageComplete(result.perfect)
+        xp += completion.xpGained
+        celebrateEvents(completion)
+
+        progress = progress.copy(
+            correct = progress.correct + result.caught,
+            answered = progress.answered + result.totalMistakes,
+            position = position,
+            sentenceCount = sentences.size,
+        )
+        bookRepo.saveProgress(book.id, progress)
+
+        _state.value = _state.value.copy(
+            proof = proof.copy(result = result),
+            passageComplete = true,
+            passagePerfect = result.perfect,
+            passageXp = xp,
+            sessionCorrect = st.sessionCorrect + result.caught,
+            sessionAnswered = st.sessionAnswered + result.totalMistakes,
+            progress = progress,
+        )
     }
 
     fun restartBook() {
