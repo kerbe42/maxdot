@@ -59,6 +59,7 @@ import com.maxdot.app.MainViewModel
 import com.maxdot.app.data.Book
 import com.maxdot.core.model.Challenge
 import com.maxdot.core.model.ChallengeType
+import com.maxdot.core.model.GameMode
 import com.maxdot.app.ui.theme.feedbackColors
 import com.maxdot.app.ui.theme.isAppInDarkTheme
 import com.maxdot.app.ui.theme.toFamily
@@ -111,7 +112,7 @@ fun GameScreen(
                     maxLines = 1,
                     modifier = Modifier.weight(1f),
                 )
-                HowToPlayButton()
+                HowToPlayButton(advanced = state.mode == GameMode.ADVANCED)
             }
 
             ScoreBar(
@@ -154,6 +155,62 @@ fun GameScreen(
                         onRestart = { viewModel.restartBook() },
                         onExit = onExit,
                     )
+                }
+
+                state.mode == GameMode.ADVANCED && state.proof != null -> {
+                    val proof = state.proof!!
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        if (proof.checked && proof.result != null) {
+                            AdvancedSummaryCard(
+                                result = proof.result!!,
+                                xp = state.passageXp,
+                                onNext = { viewModel.nextPassage() },
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            AdvancedPassageCard(
+                                proof = proof,
+                                fontScale = settings.fontScale,
+                                fontFamilyKey = settings.font,
+                                feedback = feedback,
+                                onTapToken = {},
+                            )
+                        } else {
+                            AdvancedBriefCard(proof.passage)
+                            Spacer(Modifier.height(12.dp))
+                            AdvancedPassageCard(
+                                proof = proof,
+                                fontScale = settings.fontScale,
+                                fontFamilyKey = settings.font,
+                                feedback = feedback,
+                                onTapToken = { viewModel.openToken(it) },
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedButton(
+                                    onClick = { viewModel.useProofHint() },
+                                    enabled = profile.hints > 0,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Lightbulb,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Reveal one (${profile.hints})")
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Button(
+                                    onClick = { viewModel.checkPassage() },
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("Check passage") }
+                            }
+                        }
+                        Spacer(Modifier.height(24.dp))
+                    }
                 }
 
                 else -> {
@@ -213,10 +270,19 @@ fun GameScreen(
             onDismiss = { viewModel.dismissChallenge() },
         )
     }
+
+    state.proof?.openTokenIndex?.let { index ->
+        val token = state.proof!!.passage.tokens[index]
+        TokenEditorDialog(
+            initial = state.proof!!.edits[index] ?: token.shownText,
+            onConfirm = { text -> viewModel.editToken(index, text) },
+            onDismiss = { viewModel.dismissToken() },
+        )
+    }
 }
 
 @Composable
-private fun HowToPlayButton() {
+private fun HowToPlayButton(advanced: Boolean) {
     var open by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     IconButton(onClick = { open = true }) {
         Icon(Icons.Filled.HelpOutline, contentDescription = "How to play")
@@ -227,13 +293,25 @@ private fun HowToPlayButton() {
             title = { Text("How to play") },
             text = {
                 Text(
-                    "This passage comes from the book, but punctuation has been removed " +
-                        "and some words swapped for common mistakes.\n\n" +
-                        "• Tap a [?] mark to choose the missing punctuation (sometimes " +
-                        "nothing belongs there!)\n" +
-                        "• Tap a highlighted word to pick the correct spelling or word\n" +
-                        "• Build streaks for bonus XP, and spend hints (💡) when stuck\n\n" +
-                        "Finish every challenge in a passage to move deeper into the book.",
+                    if (advanced) {
+                        "This passage comes from the book, but a few mistakes have been " +
+                            "hidden in it — and this time they are not marked.\n\n" +
+                            "• The card at the top tells you how many mistakes to find, by type\n" +
+                            "• Tap any word and retype it correctly — fix a spelling or wrong " +
+                            "word, add an apostrophe or capital, or add the punctuation that " +
+                            "belongs after it\n" +
+                            "• Stuck? Spend a hint (💡) to reveal where one mistake is\n" +
+                            "• Tap Check passage when you think you've found them all\n\n" +
+                            "Catch every mistake with no false flags for a perfect passage."
+                    } else {
+                        "This passage comes from the book, but punctuation has been removed " +
+                            "and some words swapped for common mistakes.\n\n" +
+                            "• Tap a [?] mark to choose the missing punctuation (sometimes " +
+                            "nothing belongs there!)\n" +
+                            "• Tap a highlighted word to pick the correct spelling or word\n" +
+                            "• Build streaks for bonus XP, and spend hints (💡) when stuck\n\n" +
+                            "Finish every challenge in a passage to move deeper into the book."
+                    },
                 )
             },
             confirmButton = {

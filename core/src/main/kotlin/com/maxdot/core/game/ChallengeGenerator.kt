@@ -5,6 +5,8 @@ import com.maxdot.core.model.ChallengeType
 import com.maxdot.core.model.Difficulty
 import com.maxdot.core.model.Passage
 import com.maxdot.core.model.PassageSegment
+import com.maxdot.core.model.ProofPassage
+import com.maxdot.core.model.ProofToken
 import kotlin.random.Random
 
 /**
@@ -110,6 +112,83 @@ class ChallengeGenerator(private val random: Random = Random.Default) {
         }
 
         return Passage(segments, challenges)
+    }
+
+    /**
+     * Advanced-mode counterpart of [generate]: every word becomes an editable
+     * [ProofToken], a difficulty-appropriate few of which are corrupted mistakes.
+     * Reuses the same candidate machinery; decoy slots do not apply (there is no
+     * empty slot to tap), so they are filtered out.
+     */
+    fun generateAdvanced(sentences: List<String>, difficulty: Difficulty): ProofPassage {
+        val tokens = tokenize(sentences)
+        val candidates = findCandidates(tokens, difficulty).filter { it !is Candidate.Decoy }
+        val chosen = selectCandidates(candidates, difficulty)
+        val byIndex = chosen.associateBy { it.tokenIndex }
+
+        val proofTokens = tokens.mapIndexed { i, token ->
+            val correct = token.word + token.punct
+            val (shown, type, explanation) = corrupt(token, byIndex[i])
+            ProofToken(
+                index = i,
+                leadingSpace = i != 0,
+                shownText = shown,
+                correctText = correct,
+                mistakeType = type,
+                explanation = explanation,
+            )
+        }
+        val counts = proofTokens.filter { it.isMistake }
+            .groupingBy { it.mistakeType!! }
+            .eachCount()
+        return ProofPassage(proofTokens, counts)
+    }
+
+    /** Returns the corrupted display text, mistake type, and explanation for a token. */
+    private fun corrupt(
+        token: Token,
+        cand: Candidate?,
+    ): Triple<String, ChallengeType?, String?> {
+        val correct = token.word + token.punct
+        return when (cand) {
+            null, is Candidate.Decoy -> Triple(correct, null, null)
+
+            is Candidate.Punctuation -> Triple(
+                token.word + token.punct.removePrefix(cand.mark),
+                ChallengeType.PUNCTUATION,
+                PUNCT_EXPLANATIONS[cand.mark] ?: "This punctuation mark belongs here.",
+            )
+
+            is Candidate.Grammar -> {
+                val lower = token.word.lowercase()
+                val wrong = cand.entry.group.filter { it != lower }.random(random)
+                val note = ConfusionSets.usageNote(lower)
+                Triple(
+                    matchCase(wrong, token.word) + token.punct,
+                    ChallengeType.GRAMMAR,
+                    note?.let { "The correct word is \"${token.word}\" — $it." }
+                        ?: "The original text uses \"${token.word}\" here.",
+                )
+            }
+
+            is Candidate.Agreement -> Triple(
+                matchCase(cand.wrongForm, token.word) + token.punct,
+                ChallengeType.GRAMMAR,
+                "The verb must agree with its subject — the original text uses \"${token.word}\".",
+            )
+
+            is Candidate.Apostrophe -> Triple(
+                token.word.replace("'", "") + token.punct,
+                ChallengeType.APOSTROPHE,
+                "\"${token.word}\" needs its apostrophe to mark the missing letters.",
+            )
+
+            is Candidate.Capitalization -> Triple(
+                token.word.replaceFirstChar { it.lowercase() } + token.punct,
+                ChallengeType.CAPITALIZATION,
+                "A sentence begins with a capital letter.",
+            )
+        }
     }
 
     /** Merge adjacent plain segments so the segment list stays small. */

@@ -43,6 +43,7 @@ import com.maxdot.app.MainViewModel
 import com.maxdot.app.data.AppFont
 import com.maxdot.app.data.ThemeMode
 import com.maxdot.core.model.Difficulty
+import com.maxdot.core.model.GameMode
 import com.maxdot.app.ui.theme.toFamily
 
 @Composable
@@ -134,6 +135,30 @@ fun SettingsScreen(
             }
 
             SettingsCard("Gameplay") {
+                Text("Mode", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(6.dp))
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    GameMode.entries.forEachIndexed { index, mode ->
+                        SegmentedButton(
+                            selected = settings.gameMode == mode,
+                            onClick = { mainViewModel.profiles.setGameMode(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index, GameMode.entries.size),
+                        ) { Text(mode.label) }
+                    }
+                }
+                Text(
+                    when (settings.gameMode) {
+                        GameMode.GUIDED ->
+                            "Mistakes are highlighted — tap them and pick the fix from a list."
+                        GameMode.ADVANCED ->
+                            "Mistakes are hidden. You're told how many to find, then you type each fix in place."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+
+                Spacer(Modifier.height(14.dp))
                 Text("Difficulty", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(6.dp))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {

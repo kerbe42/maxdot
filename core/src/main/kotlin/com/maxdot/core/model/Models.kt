@@ -69,6 +69,71 @@ data class ParsedBook(
     val text: String,
 )
 
+/** How the player answers a passage. Independent of [Difficulty]. */
+enum class GameMode(val label: String) {
+    /** Mistakes highlighted; tap opens a multiple-choice dialog. */
+    GUIDED("Guided"),
+
+    /** Mistakes hidden; the player finds each one and types the fix in place. */
+    ADVANCED("Advanced"),
+}
+
+/**
+ * One editable word-token in an Advanced ([GameMode.ADVANCED]) passage. Every
+ * token is tappable; a few are planted mistakes. Tokens carry their own leading
+ * space so the passage is rebuilt by simple concatenation.
+ *
+ * @param shownText the (possibly corrupted) text first displayed: word + trailing punctuation.
+ * @param correctText the correct text: word + correct trailing punctuation.
+ * @param mistakeType non-null when this token is a planted mistake.
+ * @param explanation teaching note, present when [mistakeType] is non-null.
+ */
+data class ProofToken(
+    val index: Int,
+    val leadingSpace: Boolean,
+    val shownText: String,
+    val correctText: String,
+    val mistakeType: ChallengeType? = null,
+    val explanation: String? = null,
+) {
+    val isMistake: Boolean get() = mistakeType != null
+}
+
+/** A passage for Advanced mode: every token is editable; a few are planted mistakes. */
+data class ProofPassage(
+    val tokens: List<ProofToken>,
+    /** Number of planted mistakes per type, for the "N to find" brief. */
+    val mistakeCounts: Map<ChallengeType, Int>,
+) {
+    val mistakeTotal: Int get() = tokens.count { it.isMistake }
+}
+
+/** Per-token result after an Advanced passage is checked. */
+enum class TokenOutcome {
+    /** A planted mistake the player fixed correctly. */
+    CAUGHT,
+
+    /** A planted mistake the player left unfixed (or fixed wrong). */
+    MISSED,
+
+    /** A correct word the player changed to something wrong. */
+    FALSE_FLAG,
+
+    /** A correct word the player (correctly) left alone or edited back to correct. */
+    UNTOUCHED_CORRECT,
+}
+
+/** Outcome of checking an Advanced passage. */
+data class ProofResult(
+    val outcomes: Map<Int, TokenOutcome>,
+    val caught: Int,
+    val missed: Int,
+    val falseFlags: Int,
+    val totalMistakes: Int,
+) {
+    val perfect: Boolean get() = caught == totalMistakes && falseFlags == 0
+}
+
 enum class Difficulty(
     val label: String,
     /** How many mistakes to embed per passage (upper bound). */
