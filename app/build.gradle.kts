@@ -66,4 +66,5 @@ dependencies {
     implementation(libs.pdfbox.android)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
 }
