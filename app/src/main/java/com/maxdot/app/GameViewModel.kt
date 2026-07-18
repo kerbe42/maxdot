@@ -62,6 +62,9 @@ data class GameUiState(
     val passageXp: Int = 0,
     val passagePerfect: Boolean = false,
     val bookFinished: Boolean = false,
+    val isBoss: Boolean = false,
+    /** Non-null while a Blitz run is in progress. */
+    val blitz: BlitzState? = null,
     val progress: BookProgress = BookProgress(),
 ) {
     val allAnswered: Boolean
@@ -69,16 +72,32 @@ data class GameUiState(
             passage.challenges.all { answers.containsKey(it.id) }
 }
 
-/** One-shot celebration events surfaced as snackbars. */
+/** Ephemeral state for a Blitz run: lives and a countdown, never persisted. */
+data class BlitzState(
+    val hearts: Int = 3,
+    val secondsLeft: Int = 90,
+    val score: Int = 0,
+    val over: Boolean = false,
+) {
+    val maxHearts: Int get() = 3
+}
+
+/** One-shot celebration events surfaced as snackbars or a full-screen moment. */
 data class Celebration(
     val message: String,
     val achievements: List<AchievementDef> = emptyList(),
+    /** Non-null when this celebration is a level-up (the new level), for a big overlay. */
+    val levelUp: Int? = null,
 )
 
 class GameViewModel(
     private val book: Book,
     private val bookRepo: BookRepository,
     private val profileRepo: ProfileRepository,
+    /** When true this is a boss node: harder passage sizing and boss framing. */
+    private val boss: Boolean = false,
+    /** When true this is a Blitz run: 3 hearts + a countdown, guided only. */
+    private val blitz: Boolean = false,
 ) : ViewModel() {
 
     private val generator = ChallengeGenerator()
@@ -94,10 +113,10 @@ class GameViewModel(
     private var progress = BookProgress()
 
     private val difficulty: Difficulty
-        get() = profileRepo.settings.value.difficulty
+        get() = if (boss) Difficulty.HARD else profileRepo.settings.value.difficulty
 
     private val gameMode: GameMode
-        get() = profileRepo.settings.value.gameMode
+        get() = if (blitz) GameMode.GUIDED else profileRepo.settings.value.gameMode
 
     init {
         viewModelScope.launch {
@@ -112,8 +131,30 @@ class GameViewModel(
                 }
                 position = progress.position
                 nextPassage()
+                if (blitz) {
+                    _state.value = _state.value.copy(blitz = BlitzState())
+                    startBlitzTimer()
+                }
             } catch (e: Exception) {
                 _state.value = GameUiState(loading = false, error = e.message ?: "Could not load book")
+            }
+        }
+    }
+
+    /** Ticks the Blitz countdown once per second until it hits zero or the run ends. */
+    private fun startBlitzTimer() {
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(1000)
+                val s = _state.value
+                val b = s.blitz ?: return@launch
+                if (b.over) return@launch
+                val left = b.secondsLeft - 1
+                if (left <= 0) {
+                    _state.value = s.copy(blitz = b.copy(secondsLeft = 0, over = true))
+                    return@launch
+                }
+                _state.value = s.copy(blitz = b.copy(secondsLeft = left))
             }
         }
     }
@@ -146,6 +187,8 @@ class GameViewModel(
             loading = false,
             mode = GameMode.GUIDED,
             passage = passage,
+            isBoss = boss,
+            blitz = _state.value.blitz,
             progress = progress,
             sessionCorrect = _state.value.sessionCorrect,
             sessionAnswered = _state.value.sessionAnswered,
@@ -175,6 +218,7 @@ class GameViewModel(
             loading = false,
             mode = GameMode.ADVANCED,
             proof = ProofUiState(passage = passage),
+            isBoss = boss,
             progress = progress,
             sessionCorrect = _state.value.sessionCorrect,
             sessionAnswered = _state.value.sessionAnswered,
@@ -248,6 +292,19 @@ class GameViewModel(
                 passageXp = newState.passageXp + completion.xpGained,
                 progress = progress,
             )
+        }
+        if (blitz) {
+            newState.blitz?.let { b ->
+                val hearts = (if (correct) b.hearts else b.hearts - 1).coerceAtLeast(0)
+                newState = newState.copy(
+                    blitz = b.copy(
+                        hearts = hearts,
+                        score = b.score + if (correct) events.xpGained else 0,
+                        secondsLeft = if (correct) b.secondsLeft + 3 else b.secondsLeft,
+                        over = b.over || hearts <= 0,
+                    ),
+                )
+            }
         }
         _state.value = newState
     }
@@ -353,7 +410,7 @@ class GameViewModel(
     private fun celebrateEvents(events: com.maxdot.app.data.ProgressEvents) {
         events.leveledUpTo?.let {
             _celebrations.value = _celebrations.value +
-                Celebration("Level up! You reached level $it 🎉 (+1 hint)")
+                Celebration("Level up! You reached level $it 🎉 (+1 hint)", levelUp = it)
         }
         celebrate(events.newAchievements)
     }

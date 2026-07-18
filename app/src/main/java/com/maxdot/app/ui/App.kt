@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -22,13 +23,14 @@ import com.maxdot.app.ui.screens.GameScreen
 import com.maxdot.app.ui.screens.LibraryScreen
 import com.maxdot.app.ui.screens.RewardsScreen
 import com.maxdot.app.ui.screens.SettingsScreen
-import com.maxdot.app.ui.theme.Backgrounds
+import com.maxdot.app.ui.screens.WorldMapScreen
+import com.maxdot.app.ui.theme.GameThemes
 import com.maxdot.app.ui.theme.MaxDotTheme
-import com.maxdot.app.ui.theme.isAppInDarkTheme
 
 sealed class Screen {
     data object Library : Screen()
-    data class Game(val book: Book) : Screen()
+    data class WorldMap(val book: Book) : Screen()
+    data class Game(val book: Book, val boss: Boolean = false, val blitz: Boolean = false) : Screen()
     data object Rewards : Screen()
     data object Settings : Screen()
 }
@@ -36,33 +38,54 @@ sealed class Screen {
 @Composable
 fun App(mainViewModel: MainViewModel) {
     val settings by mainViewModel.profiles.settings.collectAsStateWithLifecycle()
-    val profile by mainViewModel.profiles.profile.collectAsStateWithLifecycle()
 
     var screen by remember { mutableStateOf<Screen>(Screen.Library) }
     var gameSessionKey by rememberSaveable { mutableStateOf(0) }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sound = remember { com.maxdot.app.audio.SoundManager(context) }
+    sound.enabled = settings.sfxEnabled
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { sound.release() }
+    }
+
+    androidx.compose.runtime.CompositionLocalProvider(com.maxdot.app.audio.LocalSound provides sound) {
     MaxDotTheme(settings) {
-        val dark = isAppInDarkTheme(settings)
-        val background = Backgrounds.byId(profile.selectedBackground)
+        val theme = GameThemes.resolve(settings.selectedTheme)
+        val bgStops = theme.colors.bg.let { if (it.size == 1) it + it else it }
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(background.brush(dark)),
+                .background(Brush.verticalGradient(bgStops)),
         ) {
             when (val current = screen) {
                 is Screen.Library -> LibraryScreen(
                     mainViewModel = mainViewModel,
-                    onPlay = { book ->
-                        gameSessionKey++
-                        screen = Screen.Game(book)
-                    },
+                    onPlay = { book -> screen = Screen.WorldMap(book) },
                     onOpenRewards = { screen = Screen.Rewards },
                     onOpenSettings = { screen = Screen.Settings },
                 )
 
-                is Screen.Game -> {
+                is Screen.WorldMap -> {
                     BackHandler { screen = Screen.Library }
+                    WorldMapScreen(
+                        book = current.book,
+                        mainViewModel = mainViewModel,
+                        onPlay = { boss ->
+                            gameSessionKey++
+                            screen = Screen.Game(current.book, boss = boss)
+                        },
+                        onBlitz = {
+                            gameSessionKey++
+                            screen = Screen.Game(current.book, blitz = true)
+                        },
+                        onBack = { screen = Screen.Library },
+                    )
+                }
+
+                is Screen.Game -> {
+                    BackHandler { screen = Screen.WorldMap(current.book) }
                     val gameViewModel: GameViewModel = viewModel(
                         key = "game_${current.book.id}_$gameSessionKey",
                         factory = viewModelFactory {
@@ -71,6 +94,8 @@ fun App(mainViewModel: MainViewModel) {
                                     book = current.book,
                                     bookRepo = mainViewModel.books,
                                     profileRepo = mainViewModel.profiles,
+                                    boss = current.boss,
+                                    blitz = current.blitz,
                                 )
                             }
                         },
@@ -79,7 +104,7 @@ fun App(mainViewModel: MainViewModel) {
                         book = current.book,
                         viewModel = gameViewModel,
                         mainViewModel = mainViewModel,
-                        onExit = { screen = Screen.Library },
+                        onExit = { screen = Screen.WorldMap(current.book) },
                     )
                 }
 
@@ -100,5 +125,6 @@ fun App(mainViewModel: MainViewModel) {
                 }
             }
         }
+    }
     }
 }

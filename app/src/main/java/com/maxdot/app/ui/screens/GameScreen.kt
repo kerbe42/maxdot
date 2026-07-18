@@ -2,6 +2,7 @@ package com.maxdot.app.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,13 +58,22 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.maxdot.app.GameViewModel
 import com.maxdot.app.MainViewModel
+import com.maxdot.app.audio.LocalSound
+import com.maxdot.app.audio.Sfx
 import com.maxdot.app.data.Book
 import com.maxdot.core.model.Challenge
 import com.maxdot.core.model.ChallengeType
 import com.maxdot.core.model.GameMode
+import com.maxdot.app.ui.components.BlitzHud
+import com.maxdot.app.ui.components.BlitzOverCard
+import com.maxdot.app.ui.components.BossBanner
+import com.maxdot.app.ui.components.FloatingXp
+import com.maxdot.app.ui.components.GameHud
+import com.maxdot.app.ui.components.LevelUpOverlay
 import com.maxdot.app.ui.theme.feedbackColors
 import com.maxdot.app.ui.theme.isAppInDarkTheme
 import com.maxdot.app.ui.theme.toFamily
+import com.maxdot.core.game.Combo
 
 @Composable
 fun GameScreen(
@@ -78,13 +89,52 @@ fun GameScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val haptics = LocalHapticFeedback.current
+    val sound = LocalSound.current
     val dark = isAppInDarkTheme(settings)
     val feedback = feedbackColors(dark)
 
+    var lastXp by remember { mutableStateOf(0) }
+    var xpPop by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var levelUpLevel by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(state.passageXp) {
+        val delta = state.passageXp - lastXp
+        lastXp = state.passageXp
+        if (delta > 0) xpPop = delta to Combo.multiplier(profile.currentStreak)
+    }
+
     LaunchedEffect(celebrations.firstOrNull()) {
         celebrations.firstOrNull()?.let {
-            snackbarHostState.showSnackbar(it.message)
+            if (it.levelUp != null) {
+                levelUpLevel = it.levelUp
+                sound.play(Sfx.LEVEL_UP)
+            } else {
+                snackbarHostState.showSnackbar(it.message)
+            }
             viewModel.consumeCelebration()
+        }
+    }
+
+    // Boss-defeat fanfare on a perfect boss clear.
+    LaunchedEffect(state.passageComplete) {
+        if (state.passageComplete && state.isBoss && state.passagePerfect) {
+            sound.play(Sfx.BOSS_WIN)
+        }
+    }
+
+    // Advanced mode grades in a batch: play a result cue when the passage is checked.
+    LaunchedEffect(state.proof?.checked) {
+        if (state.proof?.checked == true) {
+            sound.play(if (state.passagePerfect) Sfx.CORRECT else Sfx.WRONG)
+        }
+    }
+
+    // In Blitz, finishing a passage auto-advances to keep the run flowing.
+    LaunchedEffect(state.passageComplete, state.blitz?.over) {
+        val b = state.blitz
+        if (b != null && !b.over && state.passageComplete) {
+            kotlinx.coroutines.delay(650)
+            viewModel.nextPassage()
         }
     }
 
@@ -92,10 +142,10 @@ fun GameScreen(
         containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(horizontal = 16.dp),
         ) {
             Row(
@@ -115,13 +165,31 @@ fun GameScreen(
                 HowToPlayButton(advanced = state.mode == GameMode.ADVANCED)
             }
 
-            ScoreBar(
-                sessionCorrect = state.sessionCorrect,
-                sessionAnswered = state.sessionAnswered,
-                streak = profile.currentStreak,
-                hints = profile.hints,
-                bookPercent = state.progress.percent,
-            )
+            val blitz = state.blitz
+            if (blitz != null) {
+                BlitzHud(
+                    streak = profile.currentStreak,
+                    hearts = blitz.hearts,
+                    maxHearts = blitz.maxHearts,
+                    secondsLeft = blitz.secondsLeft,
+                    score = blitz.score,
+                )
+            } else {
+                GameHud(
+                    streak = profile.currentStreak,
+                    hints = profile.hints,
+                    bookPercent = state.progress.percent,
+                )
+            }
+
+            if (state.isBoss) {
+                Spacer(Modifier.height(8.dp))
+                val bossTotal = state.passage?.challenges?.size
+                    ?: state.proof?.passage?.mistakeTotal ?: 0
+                val bossHits = state.passage?.challenges?.count { state.answers[it.id]?.correct == true }
+                    ?: state.proof?.result?.caught ?: 0
+                BossBanner(remaining = (bossTotal - bossHits).coerceAtLeast(0), total = bossTotal)
+            }
 
             Spacer(Modifier.height(12.dp))
 
@@ -147,6 +215,15 @@ fun GameScreen(
                             Spacer(Modifier.height(12.dp))
                             Button(onClick = onExit) { Text("Back to library") }
                         }
+                    }
+                }
+
+                state.blitz?.over == true -> {
+                    Box(
+                        Modifier.fillMaxWidth().padding(top = 40.dp),
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        BlitzOverCard(score = state.blitz!!.score, onExit = onExit)
                     }
                 }
 
@@ -186,7 +263,10 @@ fun GameScreen(
                                 fontScale = settings.fontScale,
                                 fontFamilyKey = settings.font,
                                 feedback = feedback,
-                                onTapToken = { viewModel.openToken(it) },
+                                onTapToken = {
+                                    sound.play(Sfx.TAP)
+                                    viewModel.openToken(it)
+                                },
                             )
                             Spacer(Modifier.height(12.dp))
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -224,10 +304,13 @@ fun GameScreen(
                             fontScale = settings.fontScale,
                             fontFamilyKey = settings.font,
                             feedback = feedback,
-                            onTapChallenge = { id -> viewModel.openChallenge(id) },
+                            onTapChallenge = { id ->
+                                sound.play(Sfx.TAP)
+                                viewModel.openChallenge(id)
+                            },
                         )
                         Spacer(Modifier.height(12.dp))
-                        if (state.passageComplete) {
+                        if (state.passageComplete && state.blitz == null) {
                             PassageSummaryCard(
                                 correct = state.passage?.challenges?.count {
                                     state.answers[it.id]?.correct == true
@@ -235,9 +318,10 @@ fun GameScreen(
                                 total = state.passage?.challenges?.size ?: 0,
                                 xp = state.passageXp,
                                 perfect = state.passagePerfect,
+                                isBoss = state.isBoss,
                                 onNext = { viewModel.nextPassage() },
                             )
-                        } else {
+                        } else if (!state.passageComplete) {
                             Text(
                                 "Tap the highlighted words and [?] marks to fix the text.",
                                 style = MaterialTheme.typography.bodySmall,
@@ -249,6 +333,21 @@ fun GameScreen(
                 }
             }
         }
+
+        xpPop?.let { (xp, mult) ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 96.dp),
+            ) {
+                FloatingXp(xp = xp, multiplier = mult, onDone = { xpPop = null })
+            }
+        }
+
+        levelUpLevel?.let { lvl ->
+            LevelUpOverlay(level = lvl, onDismiss = { levelUpLevel = null })
+        }
+        }
     }
 
     state.openChallenge?.let { challenge ->
@@ -259,9 +358,10 @@ fun GameScreen(
             hintsAvailable = profile.hints,
             onUseHint = { viewModel.useHint() },
             onSelect = { index ->
+                val correct = index == challenge.correctIndex
                 viewModel.answer(index)
+                sound.play(if (correct) Sfx.CORRECT else Sfx.WRONG)
                 if (settings.hapticsEnabled) {
-                    val correct = index == challenge.correctIndex
                     haptics.performHapticFeedback(
                         if (correct) HapticFeedbackType.Confirm else HapticFeedbackType.Reject,
                     )
@@ -318,69 +418,6 @@ private fun HowToPlayButton(advanced: Boolean) {
                 TextButton(onClick = { open = false }) { Text("Got it") }
             },
         )
-    }
-}
-
-@Composable
-private fun ScoreBar(
-    sessionCorrect: Int,
-    sessionAnswered: Int,
-    streak: Int,
-    hints: Int,
-    bookPercent: Int,
-) {
-    val accuracy = if (sessionAnswered == 0) null else (sessionCorrect * 100) / sessionAnswered
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f),
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    "$sessionCorrect/$sessionAnswered" + (accuracy?.let { "  ·  $it%" } ?: ""),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.LocalFireDepartment,
-                    contentDescription = "Streak",
-                    tint = if (streak > 0) MaterialTheme.colorScheme.secondary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text("$streak", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.width(12.dp))
-                Icon(
-                    Icons.Filled.Lightbulb,
-                    contentDescription = "Hints",
-                    tint = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text("$hints", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "Book $bookPercent%",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
     }
 }
 
@@ -559,6 +596,7 @@ private fun PassageSummaryCard(
     total: Int,
     xp: Int,
     perfect: Boolean,
+    isBoss: Boolean,
     onNext: () -> Unit,
 ) {
     Card(
@@ -569,14 +607,19 @@ private fun PassageSummaryCard(
     ) {
         Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                if (perfect) "Perfect passage! 🌟" else "Passage complete",
+                when {
+                    isBoss && perfect -> "Boss defeated! ⚔️"
+                    isBoss -> "Boss survived — regroup!"
+                    perfect -> "Perfect passage! 🌟"
+                    else -> "Passage complete"
+                },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(6.dp))
             Text("$correct of $total correct  ·  +$xp XP" + if (perfect) " (incl. bonus)" else "")
             Spacer(Modifier.height(12.dp))
-            Button(onClick = onNext) { Text("Next passage →") }
+            Button(onClick = onNext) { Text(if (isBoss) "Continue →" else "Next passage →") }
         }
     }
 }
