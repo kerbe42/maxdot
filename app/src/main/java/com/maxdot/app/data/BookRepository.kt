@@ -76,22 +76,24 @@ class BookRepository(private val context: Context) {
         emptyList()
     }
 
-    private fun loadImportedCatalog(): List<Book> = try {
+    private fun loadImportedCatalog(): List<Book> {
         if (!catalogFile.exists()) return emptyList()
-        val array = JSONArray(catalogFile.readText())
-        (0 until array.length()).mapNotNull { i ->
-            val obj = array.getJSONObject(i)
-            val id = obj.getString("id")
-            if (!textFileFor(id).exists()) return@mapNotNull null
-            Book(
-                id = id,
-                title = obj.getString("title"),
-                author = obj.optString("author", "Unknown author"),
-                isBundled = false,
-            )
+        return try {
+            val array = JSONArray(catalogFile.readText())
+            (0 until array.length()).mapNotNull { i ->
+                val obj = array.getJSONObject(i)
+                val id = obj.getString("id")
+                if (!textFileFor(id).exists()) return@mapNotNull null
+                Book(
+                    id = id,
+                    title = obj.getString("title"),
+                    author = obj.optString("author", "Unknown author"),
+                    isBundled = false,
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
         }
-    } catch (_: Exception) {
-        emptyList()
     }
 
     // --- Text access --------------------------------------------------------
