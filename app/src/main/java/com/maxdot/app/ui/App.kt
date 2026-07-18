@@ -23,11 +23,13 @@ import com.maxdot.app.ui.screens.GameScreen
 import com.maxdot.app.ui.screens.LibraryScreen
 import com.maxdot.app.ui.screens.RewardsScreen
 import com.maxdot.app.ui.screens.SettingsScreen
+import com.maxdot.app.ui.screens.WorldMapScreen
 import com.maxdot.app.ui.theme.GameThemes
 import com.maxdot.app.ui.theme.MaxDotTheme
 
 sealed class Screen {
     data object Library : Screen()
+    data class WorldMap(val book: Book) : Screen()
     data class Game(val book: Book) : Screen()
     data object Rewards : Screen()
     data object Settings : Screen()
@@ -52,13 +54,23 @@ fun App(mainViewModel: MainViewModel) {
             when (val current = screen) {
                 is Screen.Library -> LibraryScreen(
                     mainViewModel = mainViewModel,
-                    onPlay = { book ->
-                        gameSessionKey++
-                        screen = Screen.Game(book)
-                    },
+                    onPlay = { book -> screen = Screen.WorldMap(book) },
                     onOpenRewards = { screen = Screen.Rewards },
                     onOpenSettings = { screen = Screen.Settings },
                 )
+
+                is Screen.WorldMap -> {
+                    BackHandler { screen = Screen.Library }
+                    WorldMapScreen(
+                        book = current.book,
+                        mainViewModel = mainViewModel,
+                        onPlay = {
+                            gameSessionKey++
+                            screen = Screen.Game(current.book)
+                        },
+                        onBack = { screen = Screen.Library },
+                    )
+                }
 
                 is Screen.Game -> {
                     BackHandler { screen = Screen.Library }
