@@ -69,10 +69,12 @@ data class GameUiState(
             passage.challenges.all { answers.containsKey(it.id) }
 }
 
-/** One-shot celebration events surfaced as snackbars. */
+/** One-shot celebration events surfaced as snackbars or a full-screen moment. */
 data class Celebration(
     val message: String,
     val achievements: List<AchievementDef> = emptyList(),
+    /** Non-null when this celebration is a level-up (the new level), for a big overlay. */
+    val levelUp: Int? = null,
 )
 
 class GameViewModel(
@@ -353,7 +355,7 @@ class GameViewModel(
     private fun celebrateEvents(events: com.maxdot.app.data.ProgressEvents) {
         events.leveledUpTo?.let {
             _celebrations.value = _celebrations.value +
-                Celebration("Level up! You reached level $it 🎉 (+1 hint)")
+                Celebration("Level up! You reached level $it 🎉 (+1 hint)", levelUp = it)
         }
         celebrate(events.newAchievements)
     }
