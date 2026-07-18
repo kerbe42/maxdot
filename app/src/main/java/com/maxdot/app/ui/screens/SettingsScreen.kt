@@ -1,6 +1,11 @@
 package com.maxdot.app.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,7 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -34,6 +42,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,9 +51,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.maxdot.app.MainViewModel
 import com.maxdot.app.data.AppFont
-import com.maxdot.app.data.ThemeMode
 import com.maxdot.core.model.Difficulty
 import com.maxdot.core.model.GameMode
+import com.maxdot.app.ui.theme.GameTheme
+import com.maxdot.app.ui.theme.GameThemes
 import com.maxdot.app.ui.theme.toFamily
 
 @Composable
@@ -76,22 +87,18 @@ fun SettingsScreen(
 
             SettingsCard("Appearance") {
                 Text("Theme", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.height(6.dp))
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    ThemeMode.entries.forEachIndexed { index, mode ->
-                        SegmentedButton(
-                            selected = settings.themeMode == mode,
-                            onClick = { mainViewModel.profiles.setThemeMode(mode) },
-                            shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
-                        ) {
-                            Text(
-                                when (mode) {
-                                    ThemeMode.SYSTEM -> "System"
-                                    ThemeMode.LIGHT -> "Light"
-                                    ThemeMode.DARK -> "Dark"
-                                },
-                            )
-                        }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    GameThemes.ALL.forEach { theme ->
+                        ThemePickerTile(
+                            theme = theme,
+                            selected = settings.selectedTheme == theme.id,
+                            onSelect = { mainViewModel.profiles.setTheme(theme.id) },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
 
@@ -236,6 +243,57 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showResetDialog = false }) { Text("Cancel") }
             },
+        )
+    }
+}
+
+@Composable
+private fun ThemePickerTile(
+    theme: GameTheme,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val stops = theme.colors.bg.let { if (it.size == 1) it + it else it }
+    val outline = if (selected) theme.colors.primary
+    else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .border(BorderStroke(if (selected) 3.dp else 1.dp, outline), RoundedCornerShape(12.dp))
+            .clickable { onSelect() }
+            .padding(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Brush.verticalGradient(stops)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(16.dp).clip(CircleShape).background(theme.colors.primary))
+                Box(
+                    Modifier
+                        .size(width = 22.dp, height = 10.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(theme.colors.accent),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            theme.name,
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = theme.type.hud,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
         )
     }
 }
