@@ -1,0 +1,54 @@
+name: Debug APK
+
+# Builds the debug APK on every push to the default branch (and on demand) and
+# publishes it to the "v1.0-debug" pre-release, replacing the existing asset so
+# the download link always serves the latest build.
+
+on:
+  push:
+    branches: [ "claude/android-punctuation-grammar-game-kgqgrr" ]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: debug-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run core tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :core:test --no-daemon
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Stage APK with release name
+        run: cp app/build/outputs/apk/debug/app-debug.apk maxdot-v1.0-debug.apk
+
+      - name: Publish to v1.0-debug release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload v1.0-debug maxdot-v1.0-debug.apk --clobber --repo "${{ github.repository }}"
