@@ -58,6 +58,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.maxdot.app.GameViewModel
 import com.maxdot.app.MainViewModel
+import com.maxdot.app.audio.LocalSound
+import com.maxdot.app.audio.Sfx
 import com.maxdot.app.data.Book
 import com.maxdot.core.model.Challenge
 import com.maxdot.core.model.ChallengeType
@@ -87,6 +89,7 @@ fun GameScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val haptics = LocalHapticFeedback.current
+    val sound = LocalSound.current
     val dark = isAppInDarkTheme(settings)
     val feedback = feedbackColors(dark)
 
@@ -102,9 +105,27 @@ fun GameScreen(
 
     LaunchedEffect(celebrations.firstOrNull()) {
         celebrations.firstOrNull()?.let {
-            if (it.levelUp != null) levelUpLevel = it.levelUp
-            else snackbarHostState.showSnackbar(it.message)
+            if (it.levelUp != null) {
+                levelUpLevel = it.levelUp
+                sound.play(Sfx.LEVEL_UP)
+            } else {
+                snackbarHostState.showSnackbar(it.message)
+            }
             viewModel.consumeCelebration()
+        }
+    }
+
+    // Boss-defeat fanfare on a perfect boss clear.
+    LaunchedEffect(state.passageComplete) {
+        if (state.passageComplete && state.isBoss && state.passagePerfect) {
+            sound.play(Sfx.BOSS_WIN)
+        }
+    }
+
+    // Advanced mode grades in a batch: play a result cue when the passage is checked.
+    LaunchedEffect(state.proof?.checked) {
+        if (state.proof?.checked == true) {
+            sound.play(if (state.passagePerfect) Sfx.CORRECT else Sfx.WRONG)
         }
     }
 
@@ -242,7 +263,10 @@ fun GameScreen(
                                 fontScale = settings.fontScale,
                                 fontFamilyKey = settings.font,
                                 feedback = feedback,
-                                onTapToken = { viewModel.openToken(it) },
+                                onTapToken = {
+                                    sound.play(Sfx.TAP)
+                                    viewModel.openToken(it)
+                                },
                             )
                             Spacer(Modifier.height(12.dp))
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -280,7 +304,10 @@ fun GameScreen(
                             fontScale = settings.fontScale,
                             fontFamilyKey = settings.font,
                             feedback = feedback,
-                            onTapChallenge = { id -> viewModel.openChallenge(id) },
+                            onTapChallenge = { id ->
+                                sound.play(Sfx.TAP)
+                                viewModel.openChallenge(id)
+                            },
                         )
                         Spacer(Modifier.height(12.dp))
                         if (state.passageComplete && state.blitz == null) {
@@ -331,9 +358,10 @@ fun GameScreen(
             hintsAvailable = profile.hints,
             onUseHint = { viewModel.useHint() },
             onSelect = { index ->
+                val correct = index == challenge.correctIndex
                 viewModel.answer(index)
+                sound.play(if (correct) Sfx.CORRECT else Sfx.WRONG)
                 if (settings.hapticsEnabled) {
-                    val correct = index == challenge.correctIndex
                     haptics.performHapticFeedback(
                         if (correct) HapticFeedbackType.Confirm else HapticFeedbackType.Reject,
                     )

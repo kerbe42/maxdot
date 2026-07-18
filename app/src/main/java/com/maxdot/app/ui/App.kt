@@ -42,6 +42,14 @@ fun App(mainViewModel: MainViewModel) {
     var screen by remember { mutableStateOf<Screen>(Screen.Library) }
     var gameSessionKey by rememberSaveable { mutableStateOf(0) }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sound = remember { com.maxdot.app.audio.SoundManager(context) }
+    sound.enabled = settings.sfxEnabled
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { sound.release() }
+    }
+
+    androidx.compose.runtime.CompositionLocalProvider(com.maxdot.app.audio.LocalSound provides sound) {
     MaxDotTheme(settings) {
         val theme = GameThemes.resolve(settings.selectedTheme)
         val bgStops = theme.colors.bg.let { if (it.size == 1) it + it else it }
@@ -117,5 +125,6 @@ fun App(mainViewModel: MainViewModel) {
                 }
             }
         }
+    }
     }
 }

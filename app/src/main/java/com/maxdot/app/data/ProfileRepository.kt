@@ -27,6 +27,7 @@ data class SettingsState(
     val difficulty: com.maxdot.core.model.Difficulty = com.maxdot.core.model.Difficulty.MEDIUM,
     val gameMode: com.maxdot.core.model.GameMode = com.maxdot.core.model.GameMode.GUIDED,
     val hapticsEnabled: Boolean = true,
+    val sfxEnabled: Boolean = true,
     val dailyGoalXp: Int = 100,
 )
 
@@ -185,6 +186,7 @@ class ProfileRepository(context: Context) {
     fun setDifficulty(d: com.maxdot.core.model.Difficulty) = updateSettings { it.copy(difficulty = d) }
     fun setGameMode(mode: com.maxdot.core.model.GameMode) = updateSettings { it.copy(gameMode = mode) }
     fun setHaptics(enabled: Boolean) = updateSettings { it.copy(hapticsEnabled = enabled) }
+    fun setSfx(enabled: Boolean) = updateSettings { it.copy(sfxEnabled = enabled) }
     fun setDailyGoal(xp: Int) = updateSettings { it.copy(dailyGoalXp = xp) }
 
     // --- Persistence --------------------------------------------------------
@@ -241,6 +243,7 @@ class ProfileRepository(context: Context) {
             .putString("difficulty", s.difficulty.name)
             .putString("gameMode", s.gameMode.name)
             .putBoolean("haptics", s.hapticsEnabled)
+            .putBoolean("sfx", s.sfxEnabled)
             .putInt("dailyGoalXp", s.dailyGoalXp)
             .apply()
     }
@@ -253,6 +256,7 @@ class ProfileRepository(context: Context) {
         difficulty = enumOrDefault(prefs.getString("difficulty", null), com.maxdot.core.model.Difficulty.MEDIUM),
         gameMode = enumOrDefault(prefs.getString("gameMode", null), com.maxdot.core.model.GameMode.GUIDED),
         hapticsEnabled = prefs.getBoolean("haptics", true),
+        sfxEnabled = prefs.getBoolean("sfx", true),
         dailyGoalXp = prefs.getInt("dailyGoalXp", 100),
     )
 

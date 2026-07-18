@@ -205,6 +205,22 @@ fun SettingsScreen(
                 }
 
                 Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Sound effects", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "Blips for taps, right and wrong answers, and level-ups",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = settings.sfxEnabled,
+                        onCheckedChange = { mainViewModel.profiles.setSfx(it) },
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
                 Text("Daily goal", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
